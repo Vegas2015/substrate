@@ -161,13 +161,15 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::{
+		CodeHash, BalanceOf, Error, Module as Contracts,
+		exec::{Ext, StorageKey, AccountIdOf},
+		gas::{Gas, GasMeter},
+		tests::{Test, Call, ALICE, BOB},
+		wasm::prepare::prepare_contract,
+	};
 	use std::collections::HashMap;
 	use sp_core::H256;
-	use crate::exec::{Ext, StorageKey};
-	use crate::gas::{Gas, GasMeter};
-	use crate::tests::{Test, Call};
-	use crate::wasm::prepare::prepare_contract;
-	use crate::{CodeHash, BalanceOf, Error};
 	use hex_literal::hex;
 	use sp_runtime::DispatchError;
 	use frame_support::weights::Weight;
@@ -180,7 +182,7 @@ mod tests {
 
 	#[derive(Debug, PartialEq, Eq)]
 	struct RestoreEntry {
-		dest: u64,
+		dest: AccountIdOf<Test>,
 		code_hash: H256,
 		rent_allowance: u64,
 		delta: Vec<StorageKey>,
@@ -192,16 +194,17 @@ mod tests {
 		endowment: u64,
 		data: Vec<u8>,
 		gas_left: u64,
+		salt: u64,
 	}
 
 	#[derive(Debug, PartialEq, Eq)]
 	struct TerminationEntry {
-		beneficiary: u64,
+		beneficiary: AccountIdOf<Test>,
 	}
 
 	#[derive(Debug, PartialEq, Eq)]
 	struct TransferEntry {
-		to: u64,
+		to: AccountIdOf<Test>,
 		value: u64,
 		data: Vec<u8>,
 	}
@@ -216,7 +219,6 @@ mod tests {
 		restores: Vec<RestoreEntry>,
 		// (topics, data)
 		events: Vec<(Vec<H256>, Vec<u8>)>,
-		next_account_id: u64,
 	}
 
 	impl Ext for MockExt {
@@ -234,18 +236,17 @@ mod tests {
 			endowment: u64,
 			gas_meter: &mut GasMeter<Test>,
 			data: Vec<u8>,
-		) -> Result<(u64, ExecReturnValue), ExecError> {
+			salt: u64,
+		) -> Result<(AccountIdOf<Self::T>, ExecReturnValue), ExecError> {
 			self.instantiates.push(InstantiateEntry {
 				code_hash: code_hash.clone(),
 				endowment,
 				data: data.to_vec(),
 				gas_left: gas_meter.gas_left(),
+				salt,
 			});
-			let address = self.next_account_id;
-			self.next_account_id += 1;
-
 			Ok((
-				address,
+				Contracts::<Test>::contract_address(&ALICE, code_hash, salt),
 				ExecReturnValue {
 					flags: ReturnFlags::empty(),
 					data: Vec::new(),
@@ -254,11 +255,11 @@ mod tests {
 		}
 		fn transfer(
 			&mut self,
-			to: &u64,
+			to: &AccountIdOf<Self::T>,
 			value: u64,
 		) -> Result<(), DispatchError> {
 			self.transfers.push(TransferEntry {
-				to: *to,
+				to: to.clone(),
 				value,
 				data: Vec::new(),
 			});
@@ -266,13 +267,13 @@ mod tests {
 		}
 		fn call(
 			&mut self,
-			to: &u64,
+			to: &AccountIdOf<Self::T>,
 			value: u64,
 			_gas_meter: &mut GasMeter<Test>,
 			data: Vec<u8>,
 		) -> ExecResult {
 			self.transfers.push(TransferEntry {
-				to: *to,
+				to: to.clone(),
 				value,
 				data: data,
 			});
@@ -282,16 +283,16 @@ mod tests {
 		}
 		fn terminate(
 			&mut self,
-			beneficiary: &u64,
+			beneficiary: &AccountIdOf<Self::T>,
 		) -> Result<(), DispatchError> {
 			self.terminations.push(TerminationEntry {
-				beneficiary: *beneficiary,
+				beneficiary: beneficiary.clone(),
 			});
 			Ok(())
 		}
 		fn restore_to(
 			&mut self,
-			dest: u64,
+			dest: AccountIdOf<Self::T>,
 			code_hash: H256,
 			rent_allowance: u64,
 			delta: Vec<StorageKey>,
@@ -304,11 +305,11 @@ mod tests {
 			});
 			Ok(())
 		}
-		fn caller(&self) -> &u64 {
-			&42
+		fn caller(&self) -> &AccountIdOf<Self::T> {
+			&ALICE
 		}
-		fn address(&self) -> &u64 {
-			&69
+		fn address(&self) -> &AccountIdOf<Self::T> {
+			&BOB
 		}
 		fn balance(&self) -> u64 {
 			228
@@ -369,25 +370,26 @@ mod tests {
 			value: u64,
 			gas_meter: &mut GasMeter<Test>,
 			input_data: Vec<u8>,
-		) -> Result<(u64, ExecReturnValue), ExecError> {
-			(**self).instantiate(code, value, gas_meter, input_data)
+			salt: u64,
+		) -> Result<(AccountIdOf<Self::T>, ExecReturnValue), ExecError> {
+			(**self).instantiate(code, value, gas_meter, input_data, salt)
 		}
 		fn transfer(
 			&mut self,
-			to: &u64,
+			to: &AccountIdOf<Self::T>,
 			value: u64,
 		) -> Result<(), DispatchError> {
 			(**self).transfer(to, value)
 		}
 		fn terminate(
 			&mut self,
-			beneficiary: &u64,
+			beneficiary: &AccountIdOf<Self::T>,
 		) -> Result<(), DispatchError> {
 			(**self).terminate(beneficiary)
 		}
 		fn call(
 			&mut self,
-			to: &u64,
+			to: &AccountIdOf<Self::T>,
 			value: u64,
 			gas_meter: &mut GasMeter<Test>,
 			input_data: Vec<u8>,
@@ -396,7 +398,7 @@ mod tests {
 		}
 		fn restore_to(
 			&mut self,
-			dest: u64,
+			dest: AccountIdOf<Self::T>,
 			code_hash: H256,
 			rent_allowance: u64,
 			delta: Vec<StorageKey>,
@@ -408,10 +410,10 @@ mod tests {
 				delta,
 			)
 		}
-		fn caller(&self) -> &u64 {
+		fn caller(&self) -> &AccountIdOf<Self::T> {
 			(**self).caller()
 		}
-		fn address(&self) -> &u64 {
+		fn address(&self) -> &AccountIdOf<Self::T> {
 			(**self).address()
 		}
 		fn balance(&self) -> u64 {
@@ -457,7 +459,11 @@ mod tests {
 		input_data: Vec<u8>,
 		ext: E,
 		gas_meter: &mut GasMeter<E::T>,
-	) -> ExecResult {
+	) -> ExecResult
+	where
+		<E::T as frame_system::Trait>::AccountId:
+			UncheckedFrom<<E::T as frame_system::Trait>::Hash> + AsRef<[u8]>
+	{
 		use crate::exec::Vm;
 
 		let wasm = wat::parse_str(wat).unwrap();
@@ -499,13 +505,15 @@ mod tests {
 	)
 	(func (export "deploy"))
 
-	;; Destination AccountId to transfer the funds.
-	;; Represented by u64 (8 bytes long) in little endian.
-	(data (i32.const 4) "\07\00\00\00\00\00\00\00")
+	;; Destination AccountId (ALICE)
+	(data (i32.const 4)
+		"\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01"
+		"\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01"
+	)
 
 	;; Amount of value to transfer.
 	;; Represented by u64 (8 bytes long) in little endian.
-	(data (i32.const 12) "\99\00\00\00\00\00\00\00")
+	(data (i32.const 36) "\99\00\00\00\00\00\00\00")
 )
 "#;
 
@@ -522,7 +530,7 @@ mod tests {
 		assert_eq!(
 			&mock_ext.transfers,
 			&[TransferEntry {
-				to: 7,
+				to: ALICE,
 				value: 153,
 				data: Vec::new(),
 			}]
@@ -561,9 +569,12 @@ mod tests {
 	)
 	(func (export "deploy"))
 
-	;; Destination AccountId to transfer the funds.
-	;; Represented by u64 (8 bytes long) in little endian.
-	(data (i32.const 4) "\09\00\00\00\00\00\00\00")
+	;; Destination AccountId (ALICE)
+	(data (i32.const 4)
+		"\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01"
+		"\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01"
+	)
+
 	;; Amount of value to transfer.
 	;; Represented by u64 (8 bytes long) in little endian.
 	(data (i32.const 12) "\06\00\00\00\00\00\00\00")
@@ -585,7 +596,7 @@ mod tests {
 		assert_eq!(
 			&mock_ext.transfers,
 			&[TransferEntry {
-				to: 9,
+				to: ALICE,
 				value: 6,
 				data: vec![1, 2, 3, 4],
 			}]
@@ -659,6 +670,7 @@ mod tests {
 				endowment: 3,
 				data: vec![1, 2, 3, 4],
 				gas_left: 9392302058,
+				salt: 42
 			}]
 		);
 	}
@@ -680,8 +692,10 @@ mod tests {
 	(func (export "deploy"))
 
 	;; Beneficiary AccountId to transfer the funds.
-	;; Represented by u64 (8 bytes long) in little endian.
-	(data (i32.const 4) "\09\00\00\00\00\00\00\00")
+	(data (i32.const 4)
+		"\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01"
+		"\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01"
+	)
 )
 "#;
 
@@ -698,7 +712,7 @@ mod tests {
 		assert_eq!(
 			&mock_ext.terminations,
 			&[TerminationEntry {
-				beneficiary: 0x09,
+				beneficiary: ALICE,
 			}]
 		);
 	}
@@ -736,8 +750,10 @@ mod tests {
 	(func (export "deploy"))
 
 	;; Destination AccountId to transfer the funds.
-	;; Represented by u64 (8 bytes long) in little endian.
-	(data (i32.const 4) "\09\00\00\00\00\00\00\00")
+	(data (i32.const 4)
+		"\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01"
+		"\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01\01"
+	)
 	;; Amount of value to transfer.
 	;; Represented by u64 (8 bytes long) in little endian.
 	(data (i32.const 12) "\06\00\00\00\00\00\00\00")
@@ -759,7 +775,7 @@ mod tests {
 		assert_eq!(
 			&mock_ext.transfers,
 			&[TransferEntry {
-				to: 9,
+				to: ALICE,
 				value: 6,
 				data: vec![1, 2, 3, 4],
 			}]
