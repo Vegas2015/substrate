@@ -1243,6 +1243,7 @@ fn restoration(test_different_storage: bool, test_restore_to_with_dirty_storage:
 			let django_trie_id = ContractInfoOf::<Test>::get(&addr_django).unwrap()
 				.get_alive().unwrap().trie_id;
 
+			// The trie is regarded as 'dirty' when it was written to in the current block.
 			if !test_restore_to_with_dirty_storage {
 				// Advance 1 block, to the 6th.
 				initialize_block(6);
@@ -1256,19 +1257,19 @@ fn restoration(test_different_storage: bool, test_restore_to_with_dirty_storage:
 					addr_django.clone(),
 					0,
 					GAS_LIMIT,
-					set_rent_code_hash.as_ref().to_vec(),
+					set_rent_code_hash
+						.as_ref()
+						.iter()
+						.chain(AsRef::<[u8]>::as_ref(&addr_bob))
+						.cloned()
+						.collect(),
 				)
 			};
 
 			if test_different_storage || test_restore_to_with_dirty_storage {
 				// Parametrization of the test imply restoration failure. Check that `DJANGO` aka
 				// restoration contract is still in place and also that `BOB` doesn't exist.
-
-				assert_err_ignore_postinfo!(
-					perform_the_restoration(),
-					Error::<Test>::ContractTrapped,
-				);
-
+				let result = perform_the_restoration();
 				assert!(ContractInfoOf::<Test>::get(&addr_bob).unwrap().get_tombstone().is_some());
 				let django_contract = ContractInfoOf::<Test>::get(&addr_django).unwrap()
 					.get_alive().unwrap();
@@ -1277,9 +1278,15 @@ fn restoration(test_different_storage: bool, test_restore_to_with_dirty_storage:
 				assert_eq!(django_contract.deduct_block, System::block_number());
 				match (test_different_storage, test_restore_to_with_dirty_storage) {
 					(true, false) => {
+						assert_err_ignore_postinfo!(
+							result, Error::<Test>::InvalidTombstone,
+						);
 						assert_eq!(System::events(), vec![]);
 					}
 					(_, true) => {
+						assert_err_ignore_postinfo!(
+							result, Error::<Test>::InvalidContractOrigin,
+						);
 						pretty_assertions::assert_eq!(System::events(), vec![
 							EventRecord {
 								phase: Phase::Initialization,

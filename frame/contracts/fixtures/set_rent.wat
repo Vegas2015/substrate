@@ -26,7 +26,7 @@
 	(func $call_2
 		(call $assert
 			(i32.eq
-				(call $seal_transfer (i32.const 68) (i32.const 8) (i32.const 76) (i32.const 8))
+				(call $seal_transfer (i32.const 68) (i32.const 8) (i32.const 100) (i32.const 8))
 				(i32.const 0)
 			)
 		)
@@ -98,8 +98,11 @@
 	(data (i32.const 64) "\40")
 
 	;; encoding of Charlies's account id
-	(data (i32.const 68) "\03")
+	(data (i32.const 68)
+		"\03\03\03\03\03\03\03\03\03\03\03\03\03\03\03\03"
+		"\03\03\03\03\03\03\03\03\03\03\03\03\03\03\03\03"
+	)
 
 	;; encoding of 50 balance
-	(data (i32.const 76) "\32")
+	(data (i32.const 100) "\32")
 )
