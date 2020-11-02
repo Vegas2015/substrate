@@ -18,6 +18,7 @@ use crate::{
 	BalanceOf, ContractInfo, ContractInfoOf, GenesisConfig, Module,
 	RawAliveContractInfo, RawEvent, Trait, Schedule, gas::Gas,
 	Error, Config, RuntimeReturnCode, storage::Storage,
+	exec::AccountIdOf,
 };
 use assert_matches::assert_matches;
 use hex_literal::*;
@@ -533,10 +534,13 @@ fn run_out_of_gas() {
 
 /// Input data for each call in set_rent code
 mod call {
-	pub fn set_storage_4_byte() -> Vec<u8> { vec![] }
-	pub fn remove_storage_4_byte() -> Vec<u8> { vec![0] }
-	pub fn transfer() -> Vec<u8> { vec![0, 0] }
-	pub fn null() -> Vec<u8> { vec![0, 0, 0] }
+	use super::{AccountIdOf, Test};
+	pub fn set_storage_4_byte() -> Vec<u8> { 0u32.to_le_bytes().to_vec() }
+	pub fn remove_storage_4_byte() -> Vec<u8> { 1u32.to_le_bytes().to_vec() }
+	pub fn transfer(to: &AccountIdOf<Test>) -> Vec<u8> {
+		2u32.to_le_bytes().iter().chain(AsRef::<[u8]>::as_ref(to)).cloned().collect()
+	}
+	pub fn null() -> Vec<u8> { 3u32.to_le_bytes().to_vec() }
 }
 
 /// Test correspondence of set_rent code and its hash.
@@ -789,21 +793,21 @@ fn deduct_blocks() {
 
 #[test]
 fn call_contract_removals() {
-	removals(|| {
+	removals(|addr| {
 		// Call on already-removed account might fail, and this is fine.
-		let _ = Contracts::call(Origin::signed(ALICE), BOB, 0, GAS_LIMIT, call::null());
+		let _ = Contracts::call(Origin::signed(ALICE), addr, 0, GAS_LIMIT, call::null());
 		true
 	});
 }
 
 #[test]
 fn inherent_claim_surcharge_contract_removals() {
-	removals(|| Contracts::claim_surcharge(Origin::none(), BOB, Some(ALICE)).is_ok());
+	removals(|addr| Contracts::claim_surcharge(Origin::none(), addr, Some(ALICE)).is_ok());
 }
 
 #[test]
 fn signed_claim_surcharge_contract_removals() {
-	removals(|| Contracts::claim_surcharge(Origin::signed(ALICE), BOB, None).is_ok());
+	removals(|addr| Contracts::claim_surcharge(Origin::signed(ALICE), addr, None).is_ok());
 }
 
 #[test]
@@ -861,7 +865,7 @@ fn claim_surcharge(blocks: u64, trigger_call: impl Fn() -> bool, removes: bool) 
 /// * if allowance is exceeded
 /// * if balance is reached and balance < subsistence threshold
 ///	    * this case cannot be triggered by a contract: we check whether a tombstone is left
-fn removals(trigger_call: impl Fn() -> bool) {
+fn removals(trigger_call: impl Fn(AccountIdOf<Test>) -> bool) {
 	let (wasm, code_hash) = compile_module::<Test>("set_rent").unwrap();
 
 	// Balance reached and superior to subsistence threshold
@@ -884,7 +888,7 @@ fn removals(trigger_call: impl Fn() -> bool) {
 			let subsistence_threshold = 50 /*existential_deposit*/ + 16 /*tombstone_deposit*/;
 
 			// Trigger rent must have no effect
-			assert!(trigger_call());
+			assert!(trigger_call(addr.clone()));
 			assert_eq!(ContractInfoOf::<Test>::get(&addr).unwrap().get_alive().unwrap().rent_allowance, 1_000);
 			assert_eq!(Balances::free_balance(&addr), 100);
 
@@ -892,7 +896,7 @@ fn removals(trigger_call: impl Fn() -> bool) {
 			initialize_block(10);
 
 			// Trigger rent through call
-			assert!(trigger_call());
+			assert!(trigger_call(addr.clone()));
 			assert!(ContractInfoOf::<Test>::get(&addr).unwrap().get_tombstone().is_some());
 			assert_eq!(Balances::free_balance(&addr), subsistence_threshold);
 
@@ -900,7 +904,7 @@ fn removals(trigger_call: impl Fn() -> bool) {
 			initialize_block(20);
 
 			// Trigger rent must have no effect
-			assert!(trigger_call());
+			assert!(trigger_call(addr.clone()));
 			assert!(ContractInfoOf::<Test>::get(&addr).unwrap().get_tombstone().is_some());
 			assert_eq!(Balances::free_balance(&addr), subsistence_threshold);
 		});
@@ -924,7 +928,7 @@ fn removals(trigger_call: impl Fn() -> bool) {
 			let addr = Contracts::contract_address(&ALICE, &code_hash, 0);
 
 			// Trigger rent must have no effect
-			assert!(trigger_call());
+			assert!(trigger_call(addr.clone()));
 			assert_eq!(
 				ContractInfoOf::<Test>::get(&addr)
 					.unwrap()
@@ -939,7 +943,7 @@ fn removals(trigger_call: impl Fn() -> bool) {
 			initialize_block(10);
 
 			// Trigger rent through call
-			assert!(trigger_call());
+			assert!(trigger_call(addr.clone()));
 			assert!(ContractInfoOf::<Test>::get(&addr)
 				.unwrap()
 				.get_tombstone()
@@ -951,7 +955,7 @@ fn removals(trigger_call: impl Fn() -> bool) {
 			initialize_block(20);
 
 			// Trigger rent must have no effect
-			assert!(trigger_call());
+			assert!(trigger_call(addr.clone()));
 			assert!(ContractInfoOf::<Test>::get(&addr)
 				.unwrap()
 				.get_tombstone()
@@ -980,7 +984,7 @@ fn removals(trigger_call: impl Fn() -> bool) {
 			let addr = Contracts::contract_address(&ALICE, &code_hash, 0);
 
 			// Trigger rent must have no effect
-			assert!(trigger_call());
+			assert!(trigger_call(addr.clone()));
 			assert_eq!(
 				ContractInfoOf::<Test>::get(&addr)
 					.unwrap()
@@ -1000,7 +1004,7 @@ fn removals(trigger_call: impl Fn() -> bool) {
 				addr.clone(),
 				0,
 				GAS_LIMIT,
-				call::transfer()
+				call::transfer(&BOB),
 			));
 			assert_eq!(
 				ContractInfoOf::<Test>::get(&addr)
@@ -1016,7 +1020,7 @@ fn removals(trigger_call: impl Fn() -> bool) {
 			initialize_block(10);
 
 			// Trigger rent through call
-			assert!(trigger_call());
+			assert!(trigger_call(addr.clone()));
 			assert_matches!(ContractInfoOf::<Test>::get(&addr), Some(ContractInfo::Tombstone(_)));
 			assert_eq!(Balances::free_balance(&addr), subsistence_threshold);
 
@@ -1024,7 +1028,7 @@ fn removals(trigger_call: impl Fn() -> bool) {
 			initialize_block(20);
 
 			// Trigger rent must have no effect
-			assert!(trigger_call());
+			assert!(trigger_call(addr.clone()));
 			assert_matches!(ContractInfoOf::<Test>::get(&addr), Some(ContractInfo::Tombstone(_)));
 			assert_eq!(Balances::free_balance(&addr), subsistence_threshold);
 		});
