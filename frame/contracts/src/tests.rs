@@ -21,7 +21,6 @@ use crate::{
 	exec::AccountIdOf,
 };
 use assert_matches::assert_matches;
-use hex_literal::*;
 use codec::Encode;
 use sp_runtime::{
 	Perbill,
@@ -547,11 +546,6 @@ mod call {
 /// Also test that encoded extrinsic in code correspond to the correct transfer
 #[test]
 fn test_set_rent_code_and_hash() {
-	// This test can fail due to the encoding changes. In case it becomes too annoying
-	// let's rewrite so as we use this module controlled call or we serialize it in runtime.
-	let encoded = Encode::encode(&Call::Balances(pallet_balances::Call::transfer(CHARLIE, 50)));
-	assert_eq!(&encoded[..], &hex!("00000300000000000000C8")[..]);
-
 	let (wasm, code_hash) = compile_module::<Test>("set_rent").unwrap();
 
 	ExtBuilder::default()
