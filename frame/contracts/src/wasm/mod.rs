@@ -497,8 +497,8 @@ mod tests {
 		(drop
 			(call $seal_transfer
 				(i32.const 4)  ;; Pointer to "account" address.
-				(i32.const 8)  ;; Length of "account" address.
-				(i32.const 12) ;; Pointer to the buffer with value to transfer
+				(i32.const 32)  ;; Length of "account" address.
+				(i32.const 36) ;; Pointer to the buffer with value to transfer
 				(i32.const 8)  ;; Length of the buffer with value to transfer.
 			)
 		)
@@ -619,7 +619,7 @@ mod tests {
 	;;     output_ptr: u32,
 	;;     output_len_ptr: u32
 	;; ) -> u32
-	(import "seal0" "seal_instantiate" (func $seal_instantiate (param i32 i32 i64 i32 i32 i32 i32 i32 i32 i32 i32) (result i32)))
+	(import "seal0" "seal_instantiate" (func $seal_instantiate (param i32 i32 i64 i32 i32 i32 i32 i32 i32 i32 i32 i64) (result i32)))
 	(import "env" "memory" (memory 1 1))
 	(func (export "call")
 		(drop
@@ -635,6 +635,7 @@ mod tests {
 				(i32.const 0) ;; Length is ignored in this case
 				(i32.const 4294967295) ;; u32 max value is the sentinel value: do not copy output
 				(i32.const 0) ;; Length is ignored in this case
+				(i64.const 42) ;; Salt
 			)
 		)
 	)
@@ -669,7 +670,7 @@ mod tests {
 				code_hash: [0x11; 32].into(),
 				endowment: 3,
 				data: vec![1, 2, 3, 4],
-				gas_left: 9392302058,
+				gas_left: 9391802058,
 				salt: 42
 			}]
 		);
@@ -686,7 +687,7 @@ mod tests {
 	(func (export "call")
 		(call $seal_terminate
 			(i32.const 4)  ;; Pointer to "beneficiary" address.
-			(i32.const 8)  ;; Length of "beneficiary" address.
+			(i32.const 32)  ;; Length of "beneficiary" address.
 		)
 	)
 	(func (export "deploy"))
@@ -736,11 +737,11 @@ mod tests {
 		(drop
 			(call $seal_call
 				(i32.const 4)  ;; Pointer to "callee" address.
-				(i32.const 8)  ;; Length of "callee" address.
+				(i32.const 32)  ;; Length of "callee" address.
 				(i64.const 228)  ;; How much gas to devote for the execution.
-				(i32.const 12)  ;; Pointer to the buffer with value to transfer
+				(i32.const 36)  ;; Pointer to the buffer with value to transfer
 				(i32.const 8)   ;; Length of the buffer with value to transfer.
-				(i32.const 20)   ;; Pointer to input data buffer address
+				(i32.const 44)   ;; Pointer to input data buffer address
 				(i32.const 4)   ;; Length of input data buffer
 				(i32.const 4294967295) ;; u32 max value is the sentinel value: do not copy output
 				(i32.const 0) ;; Length is ignored in this cas
@@ -756,9 +757,9 @@ mod tests {
 	)
 	;; Amount of value to transfer.
 	;; Represented by u64 (8 bytes long) in little endian.
-	(data (i32.const 12) "\06\00\00\00\00\00\00\00")
+	(data (i32.const 36) "\06\00\00\00\00\00\00\00")
 
-	(data (i32.const 20) "\01\02\03\04")
+	(data (i32.const 44) "\01\02\03\04")
 )
 "#;
 
