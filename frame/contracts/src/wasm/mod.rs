@@ -556,11 +556,11 @@ mod tests {
 		(drop
 			(call $seal_call
 				(i32.const 4)  ;; Pointer to "callee" address.
-				(i32.const 8)  ;; Length of "callee" address.
+				(i32.const 32)  ;; Length of "callee" address.
 				(i64.const 0)  ;; How much gas to devote for the execution. 0 = all.
-				(i32.const 12) ;; Pointer to the buffer with value to transfer
+				(i32.const 36) ;; Pointer to the buffer with value to transfer
 				(i32.const 8)  ;; Length of the buffer with value to transfer.
-				(i32.const 20) ;; Pointer to input data buffer address
+				(i32.const 44) ;; Pointer to input data buffer address
 				(i32.const 4)  ;; Length of input data buffer
 				(i32.const 4294967295) ;; u32 max value is the sentinel value: do not copy output
 				(i32.const 0) ;; Length is ignored in this case
@@ -577,9 +577,9 @@ mod tests {
 
 	;; Amount of value to transfer.
 	;; Represented by u64 (8 bytes long) in little endian.
-	(data (i32.const 12) "\06\00\00\00\00\00\00\00")
+	(data (i32.const 36) "\06\00\00\00\00\00\00\00")
 
-	(data (i32.const 20) "\01\02\03\04")
+	(data (i32.const 44) "\01\02\03\04")
 )
 "#;
 
@@ -885,19 +885,19 @@ mod tests {
 		;; fill the buffer with the caller.
 		(call $seal_caller (i32.const 0) (i32.const 32))
 
-		;; assert len == 8
+		;; assert len == 32
 		(call $assert
 			(i32.eq
 				(i32.load (i32.const 32))
-				(i32.const 8)
+				(i32.const 32)
 			)
 		)
 
-		;; assert that contents of the buffer is equal to the i64 value of 42.
+		;; assert that the first 64 byte are the beginning of "ALICE"
 		(call $assert
 			(i64.eq
 				(i64.load (i32.const 0))
-				(i64.const 42)
+				(i64.const 0x0101010101010101)
 			)
 		)
 	)
@@ -938,19 +938,19 @@ mod tests {
 		;; fill the buffer with the self address.
 		(call $seal_address (i32.const 0) (i32.const 32))
 
-		;; assert size == 8
+		;; assert size == 32
 		(call $assert
 			(i32.eq
 				(i32.load (i32.const 32))
-				(i32.const 8)
+				(i32.const 32)
 			)
 		)
 
-		;; assert that contents of the buffer is equal to the i64 value of 69.
+		;; assert that the first 64 byte are the beginning of "BOB"
 		(call $assert
 			(i64.eq
 				(i64.load (i32.const 0))
-				(i64.const 69)
+				(i64.const 0x0202020202020202)
 			)
 		)
 	)
